@@ -1,8 +1,8 @@
-"""BCM temperature set points independent of power and operation mode."""
+"""BCM temperature set points and reservation cycle, independent of power and mode."""
 
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -11,6 +11,8 @@ from .bcm import (
     ONDOL,
     ROOM,
     TARGET_REGISTERS,
+    TIMER_INTERVAL_RANGE,
+    TIMER_RUNTIME_RANGE,
     BcmCoordinator,
     BcmEntity,
     get_coordinator,
@@ -32,6 +34,10 @@ async def async_setup_entry(
     ]
     if coordinator.hot_water_kind == "linear":
         entities.append(BcmTemperature(coordinator, "hot_water_temperature", HOT_WATER))
+    entities += [
+        BcmTimerCycle(coordinator, "timer_interval", 0, UnitOfTime.HOURS),
+        BcmTimerCycle(coordinator, "timer_runtime", 1, UnitOfTime.MINUTES),
+    ]
     async_add_entities(entities)
 
 
@@ -69,3 +75,32 @@ class BcmTemperature(BcmEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_set_temperature(value, self.mode_name)
+
+
+class BcmTimerCycle(BcmEntity, NumberEntity):
+    """One half of R7, which packs the reservation cycle as HHMM."""
+
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+    _attr_icon = "mdi:timer-cog-outline"
+
+    def __init__(
+        self, coordinator: BcmCoordinator, key: str, part: int, unit: str
+    ) -> None:
+        super().__init__(coordinator, key)
+        self._part = part
+        self._attr_native_unit_of_measurement = unit
+        low, high = TIMER_INTERVAL_RANGE if part == 0 else TIMER_RUNTIME_RANGE
+        self._attr_native_min_value = low
+        self._attr_native_max_value = high
+
+    @property
+    def native_value(self) -> float | None:
+        cycle = self.coordinator.data.timer_cycle
+        return None if cycle is None else cycle[self._part]
+
+    async def async_set_native_value(self, value: float) -> None:
+        if self._part == 0:
+            await self.coordinator.async_set_timer_cycle(interval=int(value))
+        else:
+            await self.coordinator.async_set_timer_cycle(runtime=int(value))

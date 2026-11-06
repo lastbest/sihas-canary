@@ -27,7 +27,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .bcm import BcmCoordinator, BcmEntity, get_coordinator
+from .bcm import (
+    BURNING_STATES,
+    CONNECTIVITY_STATES,
+    WATER_STATES,
+    BcmCoordinator,
+    BcmEntity,
+    Register,
+    get_coordinator,
+)
 from .const import (
     CONF_CFG,
     CONF_IP,
@@ -213,7 +221,18 @@ async def async_setup_entry(
 ) -> None:
     match entry.data[CONF_TYPE]:
         case "BCM":
-            async_add_entities([BcmCurrentTemperature(get_coordinator(hass, entry))])
+            coordinator = get_coordinator(hass, entry)
+            async_add_entities(
+                [
+                    BcmCurrentTemperature(coordinator),
+                    BcmOndolTemperature(coordinator),
+                    BcmHotWaterTemperature(coordinator),
+                    BcmBurning(coordinator),
+                    BcmErrorCode(coordinator),
+                    BcmWaterStatus(coordinator),
+                    BcmConnectivity(coordinator),
+                ]
+            )
 
         case "PMM":
             pmm = Pmm300(
@@ -258,6 +277,102 @@ class BcmCurrentTemperature(BcmEntity, SensorEntity):
     @property
     def native_value(self) -> float:
         return self.coordinator.data.current_temperature
+
+
+class BcmOndolTemperature(BcmEntity, SensorEntity):
+    """R9, the heating water temperature the boiler reports in whole degrees."""
+
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: BcmCoordinator) -> None:
+        super().__init__(coordinator, "ondol_current_temperature")
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.data[Register.ONDOL_TEMPERATURE]
+
+
+class BcmHotWaterTemperature(BcmEntity, SensorEntity):
+    """R10, reported in whole degrees; boilers without the probe report 0."""
+
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: BcmCoordinator) -> None:
+        super().__init__(coordinator, "hot_water_current_temperature")
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.data[Register.HOT_WATER_TEMPERATURE]
+
+
+class BcmBurning(BcmEntity, SensorEntity):
+    """R11, the same flame state the climate entity maps to its HVAC action."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = BURNING_STATES
+    _attr_icon = "mdi:fire"
+
+    def __init__(self, coordinator: BcmCoordinator) -> None:
+        super().__init__(coordinator, "burning")
+
+    @property
+    def native_value(self) -> str:
+        return BURNING_STATES[1] if self.coordinator.data[Register.FLAME] else BURNING_STATES[0]
+
+
+class BcmErrorCode(BcmEntity, SensorEntity):
+    """R12, the raw boiler error code; 0 is normal and the codes are undocumented."""
+
+    _attr_icon = "mdi:alert-circle-outline"
+
+    def __init__(self, coordinator: BcmCoordinator) -> None:
+        super().__init__(coordinator, "error_code")
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.data[Register.ERROR]
+
+
+class BcmWaterStatus(BcmEntity, SensorEntity):
+    """R13, documented as 0 normal and 1 refill needed; other values are faults."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = WATER_STATES
+    _attr_icon = "mdi:water-check"
+
+    def __init__(self, coordinator: BcmCoordinator) -> None:
+        super().__init__(coordinator, "water_status")
+
+    @property
+    def native_value(self) -> str:
+        value = self.coordinator.data[Register.WATER]
+        return WATER_STATES[value] if value < len(WATER_STATES) else WATER_STATES[-1]
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {
+            **super().extra_state_attributes,
+            "raw_value": self.coordinator.data[Register.WATER],
+        }
+
+
+class BcmConnectivity(BcmEntity, SensorEntity):
+    """R14, the link between the BCM and the boiler, not between HA and the BCM."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = CONNECTIVITY_STATES
+
+    def __init__(self, coordinator: BcmCoordinator) -> None:
+        super().__init__(coordinator, "boiler_connectivity")
+
+    @property
+    def native_value(self) -> str:
+        value = self.coordinator.data[Register.CONNECTIVITY]
+        return CONNECTIVITY_STATES[0] if value == 0 else CONNECTIVITY_STATES[1]
 
 
 class Pmm300(SihasProxy):

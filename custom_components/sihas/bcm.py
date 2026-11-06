@@ -35,10 +35,16 @@ class Register(IntEnum):
     ONDOL_TARGET = 2
     HOT_WATER_TARGET = 3
     OPERATION_MODE = 4
-    AWAY = 5
-    TIMER = 6
-    ROOM_TEMPERATURE = 8
-    FLAME = 11
+    AWAY = 5  # 0 = present, 1 = away
+    TIMER = 6  # 0 = no reservation, 1 = running
+    TIMER_TIME = 7  # HHMM, e.g. 1210 = 10 minutes every 12 hours
+    ROOM_TEMPERATURE = 8  # x0.1 degrees
+    ONDOL_TEMPERATURE = 9  # whole degrees
+    HOT_WATER_TEMPERATURE = 10  # whole degrees
+    FLAME = 11  # 0 = idle, 1 = burning
+    ERROR = 12  # 0 = normal, anything else is a boiler error code
+    WATER = 13  # 0 = normal, 1 = refill needed
+    CONNECTIVITY = 14  # 0 = boiler online, 1 = boiler offline
     MANUFACTURER = 15
     HOT_WATER_MAX = 21
     HOT_WATER_MIN = 22
@@ -68,6 +74,14 @@ LIMIT_REGISTERS = {
     HOT_WATER: (Register.HOT_WATER_MIN, Register.HOT_WATER_MAX),
 }
 
+# R7 packs the reservation cycle as HHMM: 1210 runs 10 minutes every 12 hours.
+TIMER_INTERVAL_RANGE = (1, 24)
+TIMER_RUNTIME_RANGE = (0, 59)
+
+BURNING_STATES = ["정지", "연소"]
+WATER_STATES = ["충분", "부족", "이상"]
+CONNECTIVITY_STATES = ["온라인", "오프라인"]
+
 
 @dataclass(frozen=True)
 class BcmState:
@@ -88,6 +102,16 @@ class BcmState:
     @property
     def current_temperature(self) -> float:
         return self[Register.ROOM_TEMPERATURE] / 10
+
+    @property
+    def timer_cycle(self) -> tuple[int, int] | None:
+        """R7 as (interval hours, run minutes), or None when it is not HHMM."""
+        hours, minutes = divmod(self[Register.TIMER_TIME], 100)
+        if not TIMER_INTERVAL_RANGE[0] <= hours <= TIMER_INTERVAL_RANGE[1]:
+            return None
+        if not TIMER_RUNTIME_RANGE[0] <= minutes <= TIMER_RUNTIME_RANGE[1]:
+            return None
+        return hours, minutes
 
     @property
     def hot_water_kind(self) -> str | None:
@@ -268,6 +292,31 @@ class BcmCoordinator(DataUpdateCoordinator[BcmState]):
 
     async def async_set_timer(self, on: bool) -> None:
         await self._async_command(lambda _: (Register.TIMER, int(on)))
+
+    async def async_set_timer_cycle(
+        self, interval: int | None = None, runtime: int | None = None
+    ) -> None:
+        """Change one half of R7 while keeping the other half as the device has it."""
+
+        def resolve(state: BcmState) -> tuple[Register, int]:
+            cycle = state.timer_cycle
+            if cycle is None and (interval is None or runtime is None):
+                raise ServiceValidationError(
+                    "BCM reservation cycle is unreadable; set both values at once"
+                )
+            hours = cycle[0] if interval is None else interval
+            minutes = cycle[1] if runtime is None else runtime
+            if not TIMER_INTERVAL_RANGE[0] <= hours <= TIMER_INTERVAL_RANGE[1]:
+                raise ServiceValidationError(
+                    f"BCM reservation interval must be within {TIMER_INTERVAL_RANGE}"
+                )
+            if not TIMER_RUNTIME_RANGE[0] <= minutes <= TIMER_RUNTIME_RANGE[1]:
+                raise ServiceValidationError(
+                    f"BCM reservation run time must be within {TIMER_RUNTIME_RANGE}"
+                )
+            return Register.TIMER_TIME, hours * 100 + minutes
+
+        await self._async_command(resolve)
 
     @property
     def hot_water_options(self) -> list[str]:

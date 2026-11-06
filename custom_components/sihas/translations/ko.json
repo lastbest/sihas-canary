@@ -34,6 +34,37 @@
         "sensor": {
             "bcm_current_temperature": {
                 "name": "현재 실내 온도"
+            },
+            "bcm_ondol_current_temperature": {
+                "name": "온돌 현재 온도"
+            },
+            "bcm_hot_water_current_temperature": {
+                "name": "온수 현재 온도"
+            },
+            "bcm_burning": {
+                "name": "연소 상태",
+                "state": {
+                    "정지": "정지",
+                    "연소": "연소"
+                }
+            },
+            "bcm_error_code": {
+                "name": "에러 코드"
+            },
+            "bcm_water_status": {
+                "name": "물 상태",
+                "state": {
+                    "충분": "충분",
+                    "부족": "부족",
+                    "이상": "이상"
+                }
+            },
+            "bcm_boiler_connectivity": {
+                "name": "보일러 연결",
+                "state": {
+                    "온라인": "온라인",
+                    "오프라인": "오프라인"
+                }
             }
         },
         "number": {
@@ -45,6 +76,12 @@
             },
             "bcm_hot_water_temperature": {
                 "name": "온수난방온도"
+            },
+            "bcm_timer_interval": {
+                "name": "예약 주기"
+            },
+            "bcm_timer_runtime": {
+                "name": "예약 가동시간"
             }
         },
         "select": {

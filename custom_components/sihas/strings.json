@@ -22,6 +22,37 @@
     "sensor": {
       "bcm_current_temperature": {
         "name": "Current temperature"
+      },
+      "bcm_ondol_current_temperature": {
+        "name": "Ondol water temperature"
+      },
+      "bcm_hot_water_current_temperature": {
+        "name": "Hot water temperature"
+      },
+      "bcm_burning": {
+        "name": "Burner",
+        "state": {
+          "정지": "Idle",
+          "연소": "Burning"
+        }
+      },
+      "bcm_error_code": {
+        "name": "Error code"
+      },
+      "bcm_water_status": {
+        "name": "Water status",
+        "state": {
+          "충분": "Sufficient",
+          "부족": "Low",
+          "이상": "Fault"
+        }
+      },
+      "bcm_boiler_connectivity": {
+        "name": "Boiler link",
+        "state": {
+          "온라인": "Online",
+          "오프라인": "Offline"
+        }
       }
     },
     "number": {
@@ -33,6 +64,12 @@
       },
       "bcm_hot_water_temperature": {
         "name": "Hot water target temperature"
+      },
+      "bcm_timer_interval": {
+        "name": "Reservation interval"
+      },
+      "bcm_timer_runtime": {
+        "name": "Reservation run time"
       }
     },
     "select": {
